@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands  # Import for slash commands
 import subprocess
 import os
 from dotenv import load_dotenv
@@ -13,7 +14,7 @@ if not BOT_TOKEN:
 
 # Intents and bot setup
 intents = discord.Intents.default()
-intents.message_content = True  # Fixed invalid intent
+intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
 def run_command(command):
@@ -43,38 +44,27 @@ def save_to_git(file_name, content, repo_url):
     # Add, commit, and push changes
     run_command("git add .")
     run_command("git commit -m \"Save message\"")
-    success, output = run_command("git push -u origin master")  # Updated branch to 'master'
+    success, output = run_command("git push -u origin master")
     if not success:
         raise RuntimeError(f"Failed to push changes: {output}")
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    try:
+        # Sync commands with Discord
+        await bot.tree.sync()
+        print("Slash commands synced successfully.")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
 
-@bot.command()
-async def save(ctx, *, args):
+@bot.tree.command(name="save")
+@app_commands.describe(title="The title of the message", message="The content of the message")
+async def save(interaction: discord.Interaction, title: str, message: str):
     """Save a message to the Git repository."""
     try:
-        # Parse the title and message
-        if "title:" not in args or "message:" not in args:
-            await ctx.send("Invalid format! Use /save title: <title> message: <message>")
-            return
-
-        title_start = args.find("title:") + len("title:")
-        message_start = args.find("message:")
-        if title_start == -1 or message_start == -1 or title_start >= message_start:
-            await ctx.send("Invalid format! Use /save title: <title> message: <message>")
-            return
-
-        title = args[title_start:message_start].strip()
-        message = args[message_start + len("message:"):].strip()
-
-        if not title or not message:
-            await ctx.send("Both title and message must be provided.")
-            return
-
         # Format the content
-        user_info = f"by {ctx.author.name} ({ctx.author.id})"
+        user_info = f"by {interaction.user.name} ({interaction.user.id})"
         content = f"{title}\n\n{message}\n\n{user_info}"
 
         # Save to GitHub
@@ -82,9 +72,9 @@ async def save(ctx, *, args):
         repo_url = "https://github.com/DatLittlaDucky/Image-GPT-Images-Generated.git"
         save_to_git(file_name, content, repo_url)
 
-        await ctx.send(f"Message saved to GitHub as {file_name}!")
+        await interaction.response.send_message(f"Message saved to GitHub as {file_name}!")
     except Exception as e:
-        await ctx.send(f"An error occurred: {e}")
+        await interaction.response.send_message(f"An error occurred: {e}")
 
 # Run the bot
 bot.run(BOT_TOKEN)
